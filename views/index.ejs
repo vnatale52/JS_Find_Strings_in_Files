@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Buscador de Texto en Archivos</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .container { max-width: 700px; }
+        .card { margin-top: 50px; }
+    </style>
+</head>
+<body>
+    <audio controls autoplay loop>
+         <source src="/indian_music.ogg" type="audio/mpeg">
+		 Your browser does not support the audio element.
+    </audio>
+    <p> <b> --  Reproduciendo Música de la India, para elevar tu mente a un nivel superior -- </b> </p>
+
+    <div class="container">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h4 class="card-title text-center mb-4">Buscador simultáneo en varios archivos a la vez (de diversos formatos) de múltiples cadenas de texto a la vez (extrayendo el contexto que rodea al texto hallado).  Por Vincenzo Natale, vnatale52@gmail.com  . Free to use “as it is”. </h4>
+                
+                <% if (messages && messages.length > 0) { %>
+                    <% messages.forEach(function(msg) { %>
+                        <div class="alert alert-<%= msg.category %>"><%= msg.text %></div>
+                    <% }); %>
+                <% } %>
+
+                <form action="/buscar" method="post" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="search_strings" class="form-label"><strong>Ingresa las palabras, frases, cadenas de texto, números a buscar, separados entre sí por un punto y coma. Por ejemplo:   Juan Pérez ;  expediente electrónico  ; Teléfono 99-9999;  Pesos 100.000;  100000,27  (en este caso, se busca la cantidad de 5 cadenas en cada uno de los archivos soportados) : </strong></label>
+                        <input type="text" class="form-control" id="search_strings" name="search_strings" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="context_chars" class="form-label"><strong>MUY ÚTIL:  Ingresa la cantidad de caracteres de contexto que quieras extraer INMEDIATAMENTE ANTES y DESPUÉS del texto hallado; 0 sin contexto; si es 20 extrae los 20 caracteres anteriores y posteriores; 1000 es el máximo permitido.</strong></label>
+                        <input type="number" class="form-control" id="context_chars" name="context_chars" value="240" min="0" max="1000">
+                        <div class="form-text">Número de caracteres a mostrar antes y después del hallazgo (ingresa 0 para no mostrar contexto).</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="files" class="form-label"><strong>Selecciona los archivos : </strong></label>
+                        <input class="form-control" type="file" id="files" name="files" multiple required>
+                        <div class="form-text">Puedes seleccionar múltiples archivos, cuyo contenido sea necesariamente texto y cuyas extensiones sean del tipo: txt, pdf, xls, xlsx, docx (otras extensiones no están soportadas). No soporta archivos MS Word en formato antiguo que sean .doc (conviértelo previamente a .docx, que sí está soportado), ni archivos gráficos, imágenes ni copias escaneadas.   ADVERTENCIA:   El contenido de los archivos seleccionados, para que la búsqueda pueda ser realizada, necesariamente viaja por Internet, con los riesgos de seguridad que ello implica. Hay un límite en el tamaño total de archivos a procesar, dado que no se ha contratado un servicio pago (se trata de un server de desarrollo y gratuito). Esta aplicación se encuentra en su faz de desarrollo "Under Construction and Testing". El desarrollador no asume responsabilidad alguna por posibles errores o disfunciones no detectados. Realiza los controles y pruebas que creas conveniente y necesario. Las librerías utilizadas fueron creadas por terceros.</div>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg">Ideal para la búsqueda en expedientes electrónicos -  Busca ya ! </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
