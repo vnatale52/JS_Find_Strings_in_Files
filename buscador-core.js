@@ -4,7 +4,7 @@ const pdf = require('pdf-parse');
 const mammoth = require('mammoth');
 const xlsx = require('xlsx');
 
-// Función auxiliar para obtener fragmentos de contexto
+// Función auxiliar para obtener fragmentos de contexto (sin cambios)
 const _getContextSnippets = (fullText, searchString, contextChars) => {
     const snippets = [];
     const textLower = fullText.toLowerCase();
@@ -34,7 +34,7 @@ const _getContextSnippets = (fullText, searchString, contextChars) => {
     return snippets;
 };
 
-// Funciones de procesamiento por tipo de archivo
+// Funciones de procesamiento por tipo de archivo (con cambios)
 const procesarPdf = async (rutaArchivo, listaStrings, contextChars) => {
     const hallazgos = [], problemas = [];
     const nombreBase = path.basename(rutaArchivo);
@@ -43,14 +43,14 @@ const procesarPdf = async (rutaArchivo, listaStrings, contextChars) => {
         const data = await pdf(dataBuffer);
         const pageText = data.text;
         if (!pageText || !pageText.trim()) {
-            return [hallazgos, problemas]; // PDF sin texto extraíble
+            return [hallazgos, problemas];
         }
         for (const stringBuscado of listaStrings) {
             const snippets = _getContextSnippets(pageText, stringBuscado, contextChars);
             if (snippets.length > 0) {
-                // En PDF no tenemos un número de página exacto con esta librería, lo indicamos de forma general
                 hallazgos.push(`\nArchivo: '${nombreBase}' (PDF) -> Encontrado: '${stringBuscado}'`);
                 hallazgos.push(...snippets);
+                hallazgos.push(''); // <-- CAMBIO: Añadir línea en blanco para separar
             }
         }
     } catch (e) {
@@ -67,9 +67,9 @@ const procesarDocx = async (rutaArchivo, listaStrings, contextChars) => {
         for (const stringBuscado of listaStrings) {
             const snippets = _getContextSnippets(value, stringBuscado, contextChars);
             if (snippets.length > 0) {
-                // En DOCX no tenemos un número de párrafo exacto, lo indicamos de forma general
                 hallazgos.push(`\nArchivo: '${nombreBase}' -> Encontrado: '${stringBuscado}'`);
                 hallazgos.push(...snippets);
+                hallazgos.push(''); // <-- CAMBIO: Añadir línea en blanco para separar
             }
         }
     } catch (e) {
@@ -96,6 +96,7 @@ const procesarExcel = async (rutaArchivo, listaStrings, contextChars) => {
                                 const celdaRef = `${xlsx.utils.encode_col(colIdx)}${filaIdx + 1}`;
                                 hallazgos.push(`\nArchivo: '${nombreBase}', Hoja: '${nombreHoja}', Celda: ${celdaRef} -> Encontrado: '${stringBuscado}'`);
                                 hallazgos.push(...snippets);
+                                hallazgos.push(''); // <-- CAMBIO: Añadir línea en blanco para separar
                             }
                         }
                     }
@@ -122,6 +123,7 @@ const procesarTxt = async (rutaArchivo, listaStrings, contextChars) => {
                 if (snippets.length > 0) {
                     hallazgos.push(`\nArchivo: '${nombreBase}', Línea: ${i + 1} -> Encontrado: '${stringBuscado}'`);
                     hallazgos.push(...snippets);
+                    hallazgos.push(''); // <-- CAMBIO: Añadir línea en blanco para separar
                 }
             }
         }
@@ -131,8 +133,7 @@ const procesarTxt = async (rutaArchivo, listaStrings, contextChars) => {
     return [hallazgos, problemas];
 };
 
-
-// Función principal para generar el informe
+// La función generar_informe no necesita cambios
 const generarInforme = async (carpetaEntrada, listaStrings, contextChars = 240) => {
     let hallazgosTotales = [], archivosProblematicos = [], archivosIgnorados = [];
     let archivosProcesados = 0;
@@ -168,7 +169,6 @@ const generarInforme = async (carpetaEntrada, listaStrings, contextChars = 240) 
     const totalConProblemas = setArchivosConProblemas.size;
     const totalSinProblemas = archivosProcesados - totalConProblemas;
     
-    // Construcción del informe en formato de texto
     let output = [];
     output.push("=".repeat(30) + " INFORME DE BÚSQUEDA " + "=".repeat(30));
     output.push(`Textos Buscados: [${listaStrings.join(', ')}]`);
