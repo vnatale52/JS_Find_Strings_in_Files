@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Buscador contextual de archivos</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔍</text></svg>">
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 Buscador contextual de archivos</h1>
+    <p class="description">
+      Sube tus documentos (.pdf, .docx, .xlsx, .txt), introduce los términos que deseas buscar y obtén un informe detallado con las coincidencias encontradas y su contexto.
+    </p>
+
+    <form id="searchForm" enctype="multipart/form-data">
+      <div class="form-group">
+        <label for="files">1. Selecciona archivos:</label>
+        <input type="file" id="files" name="files" multiple required accept=".pdf,.docx,.xlsx,.xls,.txt">
+        <small>Extensiones soportadas: .pdf, .docx, .xlsx, .xls, .txt (hasta 128 MB por archivo y 50 archivos)</small>
+      </div>
+
+      <div class="form-group">
+        <label for="searchStrings">2. Términos de búsqueda (separados por ";"):</label>
+        <textarea id="searchStrings" name="search_strings" placeholder="Ejemplo: cliente; contrato; pago; 'fecha de vencimiento'" required rows="4"></textarea>
+        <small>Puedes usar comillas simples para buscar frases exactas si tus términos contienen ";".</small>
+      </div>
+
+      <div class="form-group">
+        <label for="contextChars">3. Caracteres de contexto:</label>
+        <input type="number" id="contextChars" name="context_chars" value="240" min="10" max="1000">
+        <small>Número de caracteres a mostrar antes y después de cada coincidencia.</small>
+      </div>
+
+      <button type="submit" id="submitButton">Buscar coincidencias</button>
+      <button type="button" id="clearButton" class="clear-button">Limpiar Resultados</button>
+    </form>
+
+    <div id="messages" class="messages" aria-live="polite"></div>
+    
+    <section id="resultsSection" style="display: none;">
+      <div id="resumen"></div>
+      <div id="result"></div>
+    </section>
+    
+  </div>
+
+  <footer>
+    <p>&copy; 2023 Buscador contextual. Desarrollado con 💙.</p>
+  </footer>
+
+  <script>
+    const form = document.getElementById('searchForm');
+    const messagesDiv = document.getElementById('messages');
+    const resumenDiv = document.getElementById('resumen');
+    const resultDiv = document.getElementById('result');
+    const submitButton = document.getElementById('submitButton');
+    const clearButton = document.getElementById('clearButton');
+    const resultsSection = document.getElementById('resultsSection');
+    let currentSearchTerm = '';
+
+    // Función auxiliar para sanitizar y resaltar el texto
+    function resaltar(fullTextWithMarkers, searchString) {
+      if (!fullTextWithMarkers || typeof fullTextWithMarkers !== 'string') return '';
+      
+      // Sanitizar el texto para evitar XSS antes de insertar en el DOM
+      const sanitizedText = fullTextWithMarkers
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+
+      // Reemplazar los marcadores '>>>' y '<<<' por la clase de resaltado
+      return sanitizedText.replace(/&gt;&gt;&gt;(.*?)&lt;&lt;&lt;/gi, '<span class="highlight">$1</span>');
+    }
+
+    // Función para mostrar mensajes
+    function showMessage(type, text) {
+      messagesDiv.innerHTML = `<div class="alert alert-${type}">${text}</div>`;
+      messagesDiv.focus(); // Para accesibilidad
+    }
+
+    // Función para limpiar todos los resultados
+    function clearResults() {
+      messagesDiv.innerHTML = '';
+      resumenDiv.innerHTML = '';
+      resultDiv.innerHTML = '';
+      resultsSection.style.display = 'none';
+      form.reset(); // Opcional: reiniciar el formulario también
+      document.getElementById('files').value = ''; // Asegurar que el input de archivo se vacíe
+    }
+
+    clearButton.addEventListener('click', clearResults);
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      messagesDiv.innerHTML = ''; // Limpiar mensajes
+      resumenDiv.innerHTML = '<p class="processing-message">⏳ Procesando documentos, por favor espera...</p>';
+      resultDiv.innerHTML = '';
+      resultsSection.style.display = 'block'; // Mostrar la sección de resultados
+      submitButton.disabled = true; // Deshabilitar el botón para evitar envíos duplicados
+      clearButton.disabled = true; // Deshabilitar el botón de limpiar durante el procesamiento
+
+      const formData = new FormData(form);
+      const searchStringsInput = document.getElementById('searchStrings').value;
+      const terms = searchStringsInput.split(';').map(s => s.trim()).filter(s => s);
+      currentSearchTerm = terms.length > 0 ? terms[0] : ''; // O el primer término, o vacío. Para la función resaltar.
+
+      try {
+        const res = await fetch('/buscar', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await res.json(); 
+
+        if (!res.ok) {
+          showMessage('danger', data.error || 'Ocurrió un error inesperado en el servidor.');
+          resumenDiv.innerHTML = ''; // Limpiar mensaje de procesando
+          resultsSection.style.display = 'none'; // Ocultar resultados si hay error
+          return;
+        }
+
+        showMessage('success', 'Búsqueda completada con éxito.');
+
+        // Mostrar resumen global
+        const r = data.resumen;
+        resumenDiv.innerHTML = `
+          <h2>📊 Resumen global</h2>
+          <p><b>Total de archivos en el directorio de subida:</b> ${r.totalArchivos}</p>
+          <p><b>Total de archivos procesados con éxito (incluye advertencias):</b> ${r.procesados}</p>
+          <p><b>Total de archivos ignorados por formato no válido:</b> ${r.ignorados}</p>
+          <p><b>Total de archivos con problemas o errores:</b> ${r.conProblemas}</p>
+          <p><b>Total de coincidencias encontradas:</b> <span class="highlight-count">${r.totalCoincidencias}</span></p>
+          <p><b>Caracteres de contexto devueltos:</b> ${r.caracteresContexto}</p>
+          <h3>Coincidencias por término buscado:</h3>
+          <ul class="search-term-counts">
+            ${Object.keys(r.coincidenciasPorPalabra).map(key => `
+              <li>'${key}': <strong>${r.coincidenciasPorPalabra[key]}</strong></li>
+            `).join('')}
+          </ul>
+          <div class="download-buttons">
+            <button onclick="window.open('/descargar_reporte')" title="Descargar informe completo en formato de texto plano">⬇️ TXT</button>
+            <button onclick="window.open('/descargar_reporte_json')" title="Descargar informe estructurado en formato JSON">⬇️ JSON</button>
+          </div>
+        `;
+
+        // Mostrar resultados detallados
+        if (!data.resultados.length || data.resultados.every(file => file.totalCoincidencias === 0 && file.estado !== 'error' && file.estado !== 'advertencia')) {
+          resultDiv.innerHTML = "<p class='no-results'>No se encontraron coincidencias para los términos buscados en ningún archivo procesado.</p>";
+          return;
+        }
+
+        data.resultados.forEach(file => {
+          const details = document.createElement('details');
+          const total = file.totalCoincidencias || 0;
+          let fileStatusClass = '';
+          let fileStatusText = '';
+
+          if (file.estado === 'error') {
+            fileStatusClass = 'file-status-error';
+            fileStatusText = `ERROR: ${file.errorDetalle || 'No se pudo procesar.'}`;
+          } else if (file.estado === 'advertencia') {
+            fileStatusClass = 'file-status-warning';
+            fileStatusText = `ADVERTENCIA: ${file.errorDetalle || 'Archivo vacío o sin texto extraíble.'}`;
+          } else if (total === 0) {
+            fileStatusText = '0 coincidencias.';
+            fileStatusClass = 'file-status-no-match';
+          } else {
+            fileStatusText = `${total} coincidencia(s).`;
+            fileStatusClass = 'file-status-success';
+          }
+
+          details.innerHTML = `
+            <summary class="${fileStatusClass}">
+              📄 ${file.archivo} (${file.tipo}) — <strong>${fileStatusText}</strong>
+            </summary>
+            <div class="file-content">
+              ${file.estado === 'error' ?
+                `<p class="error-detail"><i>Detalle del error: ${file.errorDetalle}</i></p>` :
+              file.estado === 'advertencia' ?
+                `<p class="warning-detail"><i>Detalle de la advertencia: ${file.errorDetalle || 'Archivo vacío o sin contenido relevante.'}</i></p>` :
+              file.coincidencias.length ?
+                file.coincidencias.map(c => `
+                  <div class="match-card">
+                    <p><b>Término: </b>'${c.texto}' (${c.cantidad} hallazgo(s))</p>
+                    <ul>${c.fragmentos.map(f =>
+                      `<li>${resaltar(f, c.texto)}</li>`
+                    ).join('')}</ul>
+                  </div>
+                `).join('')
+              : `<p class="no-match-detail">No se encontraron coincidencias para los términos buscados en este archivo.</p>`
+            }
+            </div>
+          `;
+          resultDiv.appendChild(details);
+        });
+
+      } catch (error) {
+        console.error('Error al enviar la solicitud o procesar la respuesta:', error);
+        showMessage('danger', `Error de conexión o en el servidor: ${error.message}. Por favor, revisa la consola del navegador para más detalles.`);
+        resumenDiv.innerHTML = ''; // Limpiar mensaje de procesando
+        resultsSection.style.display = 'none'; // Ocultar resultados si hay error
+      } finally {
+        submitButton.disabled = false; // Habilitar el botón de búsqueda
+        clearButton.disabled = false; // Habilitar el botón de limpiar
+      }
+    });
+  </script>
+</body>
+</html>
