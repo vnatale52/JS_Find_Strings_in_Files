@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "description": "Aplicación para buscar texto en múltiples archivos, convertida de Python a Node.js.",
   "main": "server.js",
+  "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node server.js"
   },
   "author": "Conversión por Gemini",
   "license": "ISC",
@@ -15,10 +16,20 @@
     "express-session": "^1.18.0",
     "mammoth": "^1.8.0",
     "multer": "^1.4.5-lts.1",
-    "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^3.11.174",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz"
   },
-  "devDependencies": {},
-  "keywords": [],
-  "type": "commonjs"
+  "keywords": [
+    "buscador",
+    "archivos",
+    "pdf",
+    "docx",
+    "excel",
+    "texto",
+    "busqueda",
+    "contextual"
+  ],
+  "engines": {
+    "node": ">=14.0.0"
+  }
 }
