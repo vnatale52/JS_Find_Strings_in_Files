@@ -1,7 +1,7 @@
 {
   "name": "buscador-archivos",
   "version": "1.0.0",
-  "description": "Aplicación para buscar texto en múltiples archivos, convertida de Python a Node.js.",
+  "description": "Aplicación para buscar texto en múltiples archivos.",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {

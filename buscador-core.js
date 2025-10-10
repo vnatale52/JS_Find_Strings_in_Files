@@ -2,12 +2,12 @@ const fs = require('fs').promises;
 const path = require('path');
 
 // Importaciones CommonJS
-const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
+const pdfjsLib = require('pdfjs-dist/build/pdf.js'); 
 const mammoth = require('mammoth');
 const xlsx = require('xlsx');
 
-// Configurar pdfjs-dist
-pdfjsLib.GlobalWorkerOptions.workerSrc = require('pdfjs-dist/legacy/build/pdf.worker.js');
+// Configurar pdfjs-dist worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = require('pdfjs-dist/build/pdf.worker.js');
 
 // --- Función para extraer texto de PDF con información de páginas ---
 const getPdfTextByPage = async (filePath) => {
@@ -30,12 +30,13 @@ const getPdfTextByPage = async (filePath) => {
                 pageNumber: i,
                 text: pageText.trim()
             });
+            // ! LÍNEA CORREGIDA: Eliminada la llamada a page.destroy()
         }
 
-        await pdf.destroy();
+        await pdf.destroy(); // Libera la memoria del documento PDF y todas sus páginas
         return pages;
     } catch (error) {
-        throw new Error(`Error al extraer texto del PDF: ${error.message}`);
+        throw new Error(`Error al extraer texto del PDF '${path.basename(filePath)}': ${error.message}`);
     }
 };
 
@@ -45,7 +46,8 @@ const _getContextSnippets = (fullText, searchString, contextChars, pageNumber = 
     const textLower = fullText.toLowerCase();
     const searchStringLower = searchString.toLowerCase();
 
-    const searchRegex = new RegExp(searchStringLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+    const escapedSearchString = searchStringLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const searchRegex = new RegExp(escapedSearchString, 'g');
 
     let match;
     while ((match = searchRegex.exec(textLower)) !== null) {
@@ -57,19 +59,18 @@ const _getContextSnippets = (fullText, searchString, contextChars, pageNumber = 
             const startContext = Math.max(0, pos - contextChars);
             const endContext = Math.min(fullText.length, pos + searchString.length + contextChars);
 
-            const rawSnippet = fullText.substring(startContext, endContext);
+            let rawSnippet = fullText.substring(startContext, endContext);
             snippet = rawSnippet.replace(/[\r\n]+/g, ' ').trim();
 
             if (startContext > 0) snippet = `...${snippet}`;
             if (endContext < fullText.length) snippet = `${snippet}...`;
 
-            snippet = snippet.replace(new RegExp(searchString.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), `>>>$&<<<`);
+            snippet = snippet.replace(new RegExp(escapedSearchString, 'gi'), `>>>$&<<<`);
 
         } else {
             snippet = `>>>${foundText}<<<`;
         }
 
-        // Agregar información de página si está disponible
         if (pageNumber !== null) {
             snippet = `[Página ${pageNumber}] ${snippet}`;
         }
@@ -90,7 +91,6 @@ const procesarPdf = async (rutaArchivo, listaStrings, contextChars, hallazgosPor
     try {
         const paginas = await getPdfTextByPage(rutaArchivo);
         
-        // Verificar si hay texto en alguna página
         const tieneTexto = paginas.some(pagina => pagina.text && pagina.text.trim());
         if (!tieneTexto) {
             problemas.push(`Archivo: '${nombreBase}' (PDF) -> Advertencia: Archivo PDF vacío o sin texto extraíble.`);
@@ -101,7 +101,6 @@ const procesarPdf = async (rutaArchivo, listaStrings, contextChars, hallazgosPor
             let coincidenciasPorTermino = 0;
             const fragmentosConPagina = [];
 
-            // Buscar en cada página individualmente
             for (const pagina of paginas) {
                 if (!pagina.text || !pagina.text.trim()) continue;
                 
@@ -111,19 +110,16 @@ const procesarPdf = async (rutaArchivo, listaStrings, contextChars, hallazgosPor
                     coincidenciasPorTermino += snippets.length;
                     fragmentosConPagina.push(...snippets);
 
-                    // Registrar hallazgos para el reporte TXT
                     hallazgos.push(`\nArchivo: '${nombreBase}' (PDF) - Página ${pagina.pageNumber} -> Encontrado: '${stringBuscado}'`);
                     hallazgos.push(...snippets.map(s => `  └─ ${s}`));
                 }
             }
 
             if (coincidenciasPorTermino > 0) {
-                hallazgos.push(''); // Añadir línea en blanco para separar
+                hallazgos.push(''); 
                 
-                // Actualizar contador global de hallazgos por string
                 hallazgosPorString[stringBuscado] = (hallazgosPorString[stringBuscado] || 0) + coincidenciasPorTermino;
 
-                // Registrar hallazgos para el objeto JSON de resultados
                 archivoResult.coincidencias.push({
                     texto: stringBuscado,
                     cantidad: coincidenciasPorTermino,
@@ -157,7 +153,7 @@ const procesarDocx = async (rutaArchivo, listaStrings, contextChars, hallazgosPo
             if (snippets.length > 0) {
                 hallazgos.push(`\nArchivo: '${nombreBase}' (DOCX) -> Encontrado: '${stringBuscado}'`);
                 hallazgos.push(...snippets.map(s => `  └─ ${s}`));
-                hallazgos.push('');
+                hallazgos.push(''); 
                 hallazgosPorString[stringBuscado] = (hallazgosPorString[stringBuscado] || 0) + snippets.length;
 
                 archivoResult.coincidencias.push({
@@ -197,6 +193,8 @@ const procesarExcel = async (rutaArchivo, listaStrings, contextChars, hallazgosP
             if (hojaTieneDatos) hojasVacias = false;
 
             for (let filaIdx = 0; filaIdx < data.length; filaIdx++) {
+                if (!data[filaIdx]) continue; 
+
                 for (let colIdx = 0; colIdx < data[filaIdx].length; colIdx++) {
                     const valorCelda = String(data[filaIdx][colIdx]);
                     if (valorCelda && valorCelda.trim()) {
@@ -206,7 +204,7 @@ const procesarExcel = async (rutaArchivo, listaStrings, contextChars, hallazgosP
                                 const celdaRef = `${xlsx.utils.encode_col(colIdx)}${filaIdx + 1}`;
                                 hallazgos.push(`\nArchivo: '${nombreBase}', Hoja: '${nombreHoja}', Celda: ${celdaRef} -> Encontrado: '${stringBuscado}'`);
                                 hallazgos.push(...snippets.map(s => `  └─ ${s}`));
-                                hallazgos.push('');
+                                hallazgos.push(''); 
                                 hallazgosPorString[stringBuscado] = (hallazgosPorString[stringBuscado] || 0) + snippets.length;
 
                                 let matchEntry = archivoResult.coincidencias.find(c => c.texto === stringBuscado);
@@ -283,8 +281,8 @@ const generarInforme = async (carpetaEntrada, listaStrings, contextChars = 240) 
     let resultadosPorArchivo = [];
 
     let totalArchivosSubidos = 0;
-    let totalArchivosProcesadosConExito = 0;
-    let totalArchivosConProblemas = 0;
+    let totalArchivosProcesadosConExito = 0; 
+    let totalArchivosConProblemas = 0; 
     let totalHallazgosGlobal = 0;
     const hallazgosPorString = {};
     listaStrings.forEach(s => hallazgosPorString[s] = 0);
@@ -303,7 +301,22 @@ const generarInforme = async (carpetaEntrada, listaStrings, contextChars = 240) 
 
     for (const nombreArchivo of archivosEnDirectorio) {
         const rutaCompleta = path.join(carpetaEntrada, nombreArchivo);
-        const stat = await fs.stat(rutaCompleta);
+        let stat;
+        try {
+            stat = await fs.stat(rutaCompleta);
+        } catch (err) {
+            archivosProblematicosTexto.push(`Archivo: '${nombreArchivo}' -> ERROR: No se pudo acceder al archivo (podría haber sido eliminado o problemas de permisos).`);
+            totalArchivosConProblemas++;
+            resultadosPorArchivo.push({
+                archivo: nombreArchivo,
+                tipo: 'desconocido',
+                estado: 'error',
+                errorDetalle: err.message,
+                totalCoincidencias: 0,
+                coincidencias: []
+            });
+            continue;
+        }
         
         if (stat.isFile()) {
             const extension = path.extname(nombreArchivo).toLowerCase();

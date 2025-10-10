@@ -31,13 +31,15 @@ app.use(session({
     cookie: {
         maxAge: 10 * 60 * 1000,
         secure: process.env.NODE_ENV === 'production',
-        httpOnly: true
+        httpOnly: true,
+        sameSite: 'lax' // Añadido para compatibilidad entre navegadores y seguridad
     }
 }));
 
 // Configuración de Multer para la subida de archivos
 const storage = multer.diskStorage({
     destination: async (req, file, cb) => {
+        // Generar un directorio temporal único por solicitud para los archivos
         if (!req.tempDir) {
             req.tempDir = path.join(UPLOAD_FOLDER, `upload-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`);
             try {
@@ -50,16 +52,17 @@ const storage = multer.diskStorage({
         cb(null, req.tempDir);
     },
     filename: (req, file, cb) => {
+        // Para manejar nombres de archivo con caracteres especiales
         const originalname = Buffer.from(file.originalname, 'latin1').toString('utf8');
         cb(null, originalname);
     }
 });
 
-// Límite de tamaño de archivo: 128 MB
+// Límite de tamaño de archivo: 128 MB, máximo 50 archivos
 const upload = multer({
     storage: storage,
     limits: { 
-        fileSize: 128 * 1024 * 1024,
+        fileSize: 128 * 1024 * 1024, // 128 MB
         files: 50
     },
     fileFilter: (req, file, cb) => {
@@ -78,8 +81,10 @@ app.use(async (req, res, next) => {
     res.on('finish', async () => {
         if (req.tempDir) {
             try {
-                await new Promise(resolve => setTimeout(resolve, 100));
+                // Pequeño retardo para asegurar que los archivos hayan sido leídos si es necesario
+                await new Promise(resolve => setTimeout(resolve, 100)); 
                 await fs.rm(req.tempDir, { recursive: true, force: true });
+                console.log(`Directorio temporal eliminado: ${req.tempDir}`);
             } catch (err) {
                 console.error(`Error al eliminar el directorio temporal ${req.tempDir}: ${err.message}`);
             }
@@ -97,7 +102,7 @@ app.get('/', (req, res) => {
 app.post('/buscar', upload.array('files'), async (req, res) => {
     const files = req.files;
     const searchStringsRaw = req.body.search_strings;
-    let context_chars = parseInt(req.body.context_chars, 10);
+    let context_chars = parseInt(req.body.context_chars, 10); // Asegúrate de usar base 10
     const tempDir = req.tempDir;
 
     if (!files || files.length === 0) {
@@ -108,8 +113,9 @@ app.post('/buscar', upload.array('files'), async (req, res) => {
         return res.status(400).json({ error: 'Debes introducir al menos un texto para buscar.' });
     }
 
+    // Validar y ajustar context_chars
     if (isNaN(context_chars) || context_chars < 0 || context_chars > 1000) {
-        context_chars = 240;
+        context_chars = 240; // Valor por defecto
         console.warn(`Valor de caracteres de contexto inválido (${req.body.context_chars}). Se usará el valor por defecto: ${context_chars}`);
     }
 
@@ -120,31 +126,30 @@ app.post('/buscar', upload.array('files'), async (req, res) => {
 
     try {
         const informeResult = await generarInforme(tempDir, listaStrings, context_chars);
-        req.session.informeResult = informeResult;
+        req.session.informeResult = informeResult; // Guarda el informe en la sesión
         res.json(informeResult.jsonResponse);
     } catch (error) {
         console.error("Error al generar el informe en /buscar:", error);
-        res.status(500).json({ error: 'Ocurrió un error interno al procesar los archivos. Por favor, inténtelo de nuevo.' });
+        res.status(500).json({ error: 'Ocurrió un error interno al procesar los archivos. Por favor, inténtelo de nuevo.', details: error.message });
     }
 });
 
-// Manejo de errores de Multer
+// Manejo de errores de Multer (middleware de errores)
 app.use((err, req, res, next) => {
     if (err instanceof multer.MulterError) {
         if (err.code === 'LIMIT_FILE_SIZE') {
             return res.status(400).json({ error: 'Uno o más archivos exceden el límite de tamaño de 128 MB.' });
         }
-        if (err.code === 'LIMIT_UNEXPECTED_FILE') {
-            return res.status(400).json({ error: 'Se subió un número inesperado de archivos.' });
-        }
         if (err.code === 'LIMIT_FILE_COUNT') {
             return res.status(400).json({ error: 'Ha excedido el número máximo de archivos permitidos (50).' });
         }
+        // Para otros errores de Multer no específicos aquí
         return res.status(400).json({ error: `Error de subida: ${err.message}` });
     } else if (err) {
+        // Errores generales que no son de Multer, por ejemplo, el error de fileFilter
         return res.status(400).json({ error: `Error en la subida de archivos: ${err.message}` });
     }
-    next(err);
+    next(err); // Pasa el error al siguiente middleware si no lo manejamos aquí
 });
 
 // Ruta para descargar el informe completo en formato TXT
